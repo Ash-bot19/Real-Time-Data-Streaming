@@ -1,0 +1,19 @@
+FROM apache/spark:3.3.1
+
+USER root
+
+# Install Python tooling plus helpers for Maven/Ivy resolution
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip curl unzip maven && \
+    python3 -m pip install --upgrade pip && \
+    python3 -m pip install pyspark==3.3.1 cassandra-driver && \
+    rm -rf /var/lib/apt/lists/* && \
+    if id spark >/dev/null 2>&1; then \
+        echo "spark user already exists"; \
+    else \
+        useradd -ms /bin/bash spark; \
+    fi
+
+USER spark
+
+WORKDIR /opt/spark/work-dir
