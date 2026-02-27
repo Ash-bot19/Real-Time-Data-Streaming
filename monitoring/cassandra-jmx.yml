@@ -1,0 +1,12 @@
+startDelaySeconds: 0
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+
+rules:
+  - pattern: "org.apache.cassandra.metrics<type=(.+), name=(.+)><>Value"
+    name: cassandra_$1_$2
+    type: GAUGE
+
+  - pattern: "org.apache.cassandra.metrics<type=(.+), name=(.+)><>Count"
+    name: cassandra_$1_$2_total
+    type: COUNTER
