@@ -206,6 +206,16 @@ services:
     depends_on:
       - prometheus
 
+  stress-producer:
+    image: python:3.11
+    container_name: stress-producer
+    volumes:
+      - ./:/app
+    working_dir: /app
+    command: sleep infinity
+    networks:
+      - confluent
+
 networks:
   confluent:
     driver: bridge

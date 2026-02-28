@@ -4,9 +4,19 @@ from airflow.operators.python_operator import PythonOperator
 
 def get_data():
     import requests
-    r = requests.get("https://randomuser.me/api/", timeout=15)
-    r.raise_for_status()
-    return r.json()['results'][0]
+    import time
+
+    for _ in range(3):  # retry 3 times
+        r = requests.get("https://randomuser.me/api/", timeout=15)
+        r.raise_for_status()
+
+        data = r.json().get("results", [])
+        if data:
+            return data[0]
+
+        time.sleep(1)
+
+    raise ValueError("RandomUser API returned empty results after retries")
 
 def format_data(res):
     loc = res['location']
@@ -37,17 +47,20 @@ def stream_to_kafka():
         max_block_ms=10000,
     )
 
-    for _ in range(5):
-        try:
+    try:
+        for _ in range(5):
             res = get_data()
             data = format_data(res)
-            producer.send('users_created', data)
+
+            future = producer.send('users_created', data)
+            future.get(timeout=10)  # force delivery check
+
             logging.info("Sent user %s", data['username'])
             time.sleep(1)
-        except Exception as e:
-            import traceback
-            logging.error(traceback.format_exc())
-            raise
+
+    finally:
+        producer.flush()
+        producer.close()
 
 
 default_args = {'owner': 'airflow', 'start_date': datetime(2023, 9, 3, 10, 0)}
