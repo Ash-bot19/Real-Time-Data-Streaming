@@ -1,8 +1,11 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, concat_ws
+from pyspark.sql.functions import from_json, col
 from pyspark.sql.types import StructType, StructField, StringType
 from prometheus_client import Counter, Gauge, start_http_server
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 
 KAFKA_BOOTSTRAP = "broker:29092"
 TOPIC = "users_created"
@@ -54,22 +57,28 @@ def process_batch(batch_df, batch_id):
     count = batch_df.count()
 
     if count > 0:
-        batch_df.write \
-            .format("org.apache.spark.sql.cassandra") \
-            .mode("append") \
-            .options(keyspace=KEYSPACE, table=TABLE) \
-            .save()
+        try:
+            batch_df.write \
+                .format("org.apache.spark.sql.cassandra") \
+                .mode("append") \
+                .options(keyspace=KEYSPACE, table=TABLE) \
+                .save()
+            # Increment AFTER confirmed write to avoid overcounting on retry
+            records_processed_total.inc(count)
+            cassandra_write_total.inc(count)
+        except Exception as e:
+            logger.error("Cassandra write failed for batch %s: %s", batch_id, e)
+            raise
 
-        records_processed_total.inc(count)
-        cassandra_write_total.inc(count)
-
-    duration = time.time() - start_time
-    batch_duration_seconds.set(duration)
+    batch_duration_seconds.set(time.time() - start_time)
 
 
 def main():
-    # Start Prometheus metrics server
-    start_http_server(8000)
+    # Start Prometheus metrics server (guard against re-bind on hot-restart)
+    try:
+        start_http_server(8000)
+    except OSError:
+        pass
 
     spark = SparkSession.builder \
         .appName("KafkaUserStream") \
@@ -83,7 +92,7 @@ def main():
         .format("kafka") \
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP) \
         .option("subscribe", TOPIC) \
-        .option("startingOffsets", "latest") \
+        .option("startingOffsets", "earliest") \
         .load()
 
     json_df = df.selectExpr("CAST(value AS STRING) as json_data")
@@ -93,7 +102,7 @@ def main():
     ).select("data.*")
 
     enriched_df = parsed_df.withColumn(
-        "user_id", concat_ws("_", col("first_name"), col("last_name"))
+        "user_id", col("username")
     )
 
     final_df = enriched_df.select(
@@ -113,7 +122,7 @@ def main():
     # Use foreachBatch for instrumentation
     query = final_df.writeStream \
         .foreachBatch(process_batch) \
-        .option("checkpointLocation", "/tmp/checkpoints/users") \
+        .option("checkpointLocation", "/opt/spark/checkpoints/users") \
         .outputMode("append") \
         .start()
 

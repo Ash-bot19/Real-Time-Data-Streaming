@@ -3,4 +3,10 @@ lowercaseOutputName: true
 lowercaseOutputLabelNames: true
 
 rules:
-  - pattern: ".*"
+  - pattern: "metrics:name=(.+),type=gauges"
+    name: spark_$1
+    type: GAUGE
+
+  - pattern: "metrics:name=(.+),type=counters"
+    name: spark_$1_total
+    type: COUNTER

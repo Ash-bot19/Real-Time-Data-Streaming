@@ -33,7 +33,11 @@ def generate_user():
     }
 
 def send():
-    producer.send("users_created", generate_user())
+    future = producer.send("users_created", generate_user())
+    try:
+        future.get(timeout=10)
+    except Exception as e:
+        print(f"[ERROR] Delivery failed: {e}", flush=True)
 
 start = time.time()
 

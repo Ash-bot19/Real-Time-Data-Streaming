@@ -1,6 +1,6 @@
 from datetime import datetime
 from airflow import DAG
-from airflow.operators.python_operator import PythonOperator
+from airflow.operators.python import PythonOperator
 
 def get_data():
     import requests
@@ -52,8 +52,16 @@ def stream_to_kafka():
             res = get_data()
             data = format_data(res)
 
-            future = producer.send('users_created', data)
-            future.get(timeout=10)  # force delivery check
+            for attempt in range(3):
+                try:
+                    future = producer.send('users_created', data)
+                    future.get(timeout=10)
+                    break
+                except Exception as e:
+                    if attempt == 2:
+                        raise
+                    logging.warning("Send attempt %d failed: %s", attempt + 1, e)
+                    time.sleep(2 ** attempt)
 
             logging.info("Sent user %s", data['username'])
             time.sleep(1)
