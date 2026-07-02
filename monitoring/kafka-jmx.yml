@@ -4,24 +4,46 @@ lowercaseOutputName: true
 lowercaseOutputLabelNames: true
 
 rules:
-  - pattern: "kafka.server<type=(.+), name=(.+)><>(Count|Value)"
+  - pattern: "kafka.server<type=(.+), name=(.+)><>Count"
+    name: kafka_server_$1_$2_total
+    type: COUNTER
+
+  - pattern: "kafka.server<type=(.+), name=(.+)><>Value"
     name: kafka_server_$1_$2
     type: GAUGE
 
-  - pattern: "kafka.server<type=(.+), name=(.+), topic=(.+)><>(Count|Value)"
+  - pattern: "kafka.server<type=(.+), name=(.+), topic=(.+)><>Count"
+    name: kafka_server_$1_$2_total
+    labels:
+      topic: "$3"
+    type: COUNTER
+
+  - pattern: "kafka.server<type=(.+), name=(.+), topic=(.+)><>Value"
     name: kafka_server_$1_$2
     labels:
       topic: "$3"
     type: GAUGE
 
-  - pattern: "kafka.controller<type=(.+), name=(.+)><>(Count|Value)"
+  - pattern: "kafka.controller<type=(.+), name=(.+)><>Count"
+    name: kafka_controller_$1_$2_total
+    type: COUNTER
+
+  - pattern: "kafka.controller<type=(.+), name=(.+)><>Value"
     name: kafka_controller_$1_$2
     type: GAUGE
 
-  - pattern: "kafka.network<type=(.+), name=(.+)><>(Count|Value)"
+  - pattern: "kafka.network<type=(.+), name=(.+)><>Count"
+    name: kafka_network_$1_$2_total
+    type: COUNTER
+
+  - pattern: "kafka.network<type=(.+), name=(.+)><>Value"
     name: kafka_network_$1_$2
     type: GAUGE
 
-  - pattern: "kafka.log<type=(.+), name=(.+)><>(Count|Value)"
+  - pattern: "kafka.log<type=(.+), name=(.+)><>Count"
+    name: kafka_log_$1_$2_total
+    type: COUNTER
+
+  - pattern: "kafka.log<type=(.+), name=(.+)><>Value"
     name: kafka_log_$1_$2
     type: GAUGE

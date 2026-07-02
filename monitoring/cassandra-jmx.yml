@@ -3,6 +3,14 @@ lowercaseOutputName: true
 lowercaseOutputLabelNames: true
 
 rules:
+  - pattern: "org.apache.cassandra.metrics<type=(.+), scope=(.+), name=(.+)><>Value"
+    name: cassandra_$1_$2_$3
+    type: GAUGE
+
+  - pattern: "org.apache.cassandra.metrics<type=(.+), scope=(.+), name=(.+)><>Count"
+    name: cassandra_$1_$2_$3_total
+    type: COUNTER
+
   - pattern: "org.apache.cassandra.metrics<type=(.+), name=(.+)><>Value"
     name: cassandra_$1_$2
     type: GAUGE

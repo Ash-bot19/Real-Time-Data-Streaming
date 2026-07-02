@@ -1,2 +1,2 @@
-requests
-kafka-python
+kafka-python==2.0.2
+requests==2.31.0

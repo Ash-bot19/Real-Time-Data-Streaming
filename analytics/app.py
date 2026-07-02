@@ -1,11 +1,13 @@
+import os
 import streamlit as st
 import requests
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 
-PROM_RANGE_URL = "http://prometheus:9090/api/v1/query_range"
-PROM_INSTANT_URL = "http://prometheus:9090/api/v1/query"
+PROM_BASE = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
+PROM_RANGE_URL = f"{PROM_BASE}/api/v1/query_range"
+PROM_INSTANT_URL = f"{PROM_BASE}/api/v1/query"
 
 st.set_page_config(layout="wide")
 st.title("Operational Analytics – Streaming Pipeline")
@@ -31,27 +33,55 @@ if range_option != "Custom":
 else:
     start_date = st.date_input("Start Date")
     end_date = st.date_input("End Date")
-    start = datetime.combine(start_date, datetime.min.time())
-    end = datetime.combine(end_date, datetime.min.time())
+    start = datetime.combine(start_date, time(0, 0, 0))
+    end = datetime.combine(end_date, time(23, 59, 59))
+
+
+# -------------------------
+# Prometheus Query Helpers
+# -------------------------
+
+def query_prometheus_range(query, start, end, step="30s"):
+    try:
+        resp = requests.get(PROM_RANGE_URL, params={
+            "query": query,
+            "start": start.timestamp(),
+            "end": end.timestamp(),
+            "step": step,
+        }, timeout=5)
+        resp.raise_for_status()
+        body = resp.json()
+        if body.get("status") != "success":
+            return []
+        return body["data"]["result"]
+    except Exception as e:
+        st.warning(f"Prometheus range query failed: {e}")
+        return []
+
+
+def query_prometheus_instant(query):
+    try:
+        resp = requests.get(PROM_INSTANT_URL, params={"query": query}, timeout=5)
+        resp.raise_for_status()
+        body = resp.json()
+        if body.get("status") != "success":
+            return []
+        return body["data"]["result"]
+    except Exception as e:
+        st.warning(f"Prometheus instant query failed: {e}")
+        return []
+
 
 # -------------------------
 # Kafka Ingestion Rate
 # -------------------------
 
-kafka_query = "rate(kafka_server_brokertopicmetrics_messagesinpersec_topic_users_created[1m])"
+# Note: _total suffix matches the COUNTER type in kafka-jmx.yml
+kafka_query = "rate(kafka_server_brokertopicmetrics_messagesinpersec_topic_users_created_total[1m])"
+result_kafka = query_prometheus_range(kafka_query, start, end)
 
-params_kafka = {
-    "query": kafka_query,
-    "start": start.timestamp(),
-    "end": end.timestamp(),
-    "step": "30s"
-}
-
-response_kafka = requests.get(PROM_RANGE_URL, params=params_kafka)
-data_kafka = response_kafka.json()
-
-if data_kafka["data"]["result"]:
-    values = data_kafka["data"]["result"][0]["values"]
+if result_kafka:
+    values = result_kafka[0]["values"]
     df = pd.DataFrame(values, columns=["timestamp", "value"])
     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s")
     df["value"] = df["value"].astype(float)
@@ -78,19 +108,10 @@ else:
 # -------------------------
 
 cassandra_query = "rate(cassandra_clientrequest_scope_write_latency_total[1m])"
+result_cassandra = query_prometheus_range(cassandra_query, start, end)
 
-params_cassandra = {
-    "query": cassandra_query,
-    "start": start.timestamp(),
-    "end": end.timestamp(),
-    "step": "30s"
-}
-
-response_cassandra = requests.get(PROM_RANGE_URL, params=params_cassandra)
-data_cassandra = response_cassandra.json()
-
-if data_cassandra["data"]["result"]:
-    values_c = data_cassandra["data"]["result"][0]["values"]
+if result_cassandra:
+    values_c = result_cassandra[0]["values"]
     df_c = pd.DataFrame(values_c, columns=["timestamp", "value"])
     df_c["value"] = df_c["value"].astype(float)
     write_pressure = df_c["value"].mean()
@@ -108,16 +129,10 @@ processing_ratio = write_pressure / avg_rate if avg_rate > 0 else 0
 # -------------------------
 
 replication_query = "kafka_server_replicamanager_underreplicatedpartitions"
+result_replication = query_prometheus_instant(replication_query)
 
-params_replication = {
-    "query": replication_query
-}
-
-response_replication = requests.get(PROM_INSTANT_URL, params=params_replication)
-data_replication = response_replication.json()
-
-if data_replication["data"]["result"]:
-    replication_health = float(data_replication["data"]["result"][0]["value"][1])
+if result_replication:
+    replication_health = float(result_replication[0]["value"][1])
 else:
     replication_health = 0
 
